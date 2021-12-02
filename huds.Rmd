@@ -1,0 +1,179 @@
+---
+title: "huds"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggplot2)
+library(jsonlite) 
+library(readxl)
+```
+
+```{r hodp-theme}
+
+# Step 0: HODP Theme
+if (!require('dplyr')) install.packages('dplyr'); library(dplyr)
+if (!require('ggplot2')) install.packages('ggplot2'); library(ggplot2)
+#if (!require('hrbrthemes')) install.packages('hrbrthemes'); library(hrbrthemes)
+if (!require('magick')) install.packages('magick'); library(magick)
+if (!require('plotly')) install.packages('plotly'); library(plotly)
+logo <- image_read("logo.png")
+# Legend: https://stackoverflow.com/questions/14622421/how-to-change-legend-title-in-ggplot
+
+monochrome <- c('#760000', '#BE1E26', '#D84742', '#FF6B61', '#FF9586')
+primary <- c('#EE3838', '#FA9E1C', '#78C4D4', '#4B5973', '#E2DDDB')
+sidebysidebarplot <- c("#ef3e3e", "#2c3e50")
+theme_hodp <- function () { 
+  theme_classic(base_size=12, base_family="Helvetica") %+replace%
+    theme(
+      panel.background  = element_rect(fill="#F2F2F2", colour=NA),
+      plot.background = element_rect(fill="#F2F2F2", colour="#d3d3d3"),
+      legend.background = element_rect(fill="transparent", colour=NA),
+      legend.key = element_rect(fill="transparent", colour=NA),
+      plot.title = element_text(size=24,  family="Helvetica", face = "bold", margin = margin(t = 0, r = 0, b = 10, l = 0)),
+      plot.subtitle = element_text(size=18,  family="Helvetica", color="#717171", face = "italic", margin = margin(t = 0, r = 0, b = 10, l = 0)),
+      plot.caption = element_text(size=8,  family="Helvetica", hjust = 1),
+      axis.text.x =element_text(size=10,  family="Helvetica"),
+      axis.title.x =element_text(size=14, family="Helvetica", margin = margin(t = 10, r = 0, b = 0, l = 0), face = "bold"),
+      axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0), size=14, family="Helvetica", angle=90, face ='bold'),
+      legend.title=element_text(size=10, family="Helvetica"), 
+      legend.text=element_text(size=10, family="Helvetica"),
+      legend.position = "bottom",
+      axis.ticks = element_blank()
+    )
+}
+
+```
+
+```{r}
+
+data <- read_csv("SwipeDataOct4-10.csv", 
+     col_types = cols(`Board Tran` = col_date(format = "%Y/%m/%d"), 
+         `Actual DateTime` = col_character(), 
+         Interval = col_character()))
+data$`Actual DateTime` <- format(as.POSIXct(data$`Actual DateTime`, 
+                                format = '%I:%M:%S %p'), format = "%H:%M:%S")
+data$`Interval` <- format(as.POSIXct(data$`Interval`, 
+                                format = '%I:%M:%S %p'), format = "%H:%M:%S")
+cleandata <- data %>% 
+  select(`Profit Center Name`, `Board Tran`, `Actual DateTime`, `Interval`, `Board Plan`) %>% 
+  mutate(house = `Profit Center Name`,
+         date = `Board Tran`,
+         time = `Actual DateTime`,
+         interval = `Interval`,
+         type = `Board Plan`) %>% 
+  select(house, date, time, interval, type) %>% 
+  mutate(region = case_when(house == "HUDSRES ANNENBERG" ~ "Annenberg",
+                   house == "HUDSRES ANN FLY-BY" ~ "Fly-By",
+                   house == "HUDSRES CABOT HOUSE" ~ "Quad",
+                   house == "HUDSRES CURRIER HOUSE" ~"Quad",
+                   house == "HUDSRES PFORZHEIMER HOUSE" ~ "Quad",
+                   house == "HUDSRES HILLEL" ~ "Hillel",
+                   TRUE ~ "River")) %>% 
+  mutate(neighborhood = case_when(house == "HUDSRES DUNSTER HOUSE" |
+                                  house == "HUDSRES LEVERETT HOUSE" |
+                                  house == "HUDSRES MATHER HOUSE" ~ "River East",
+                                  house == "HUDSRES ADAMS HOUSE" |
+                                  house == "HUDSRES LOWELL HOUSE" |
+                                  house == "HUDSRES QUINCY HOUSE" ~ "River Central",
+                                  house == "HUDSRES ELIOT HOUSE" |
+                                  house == "HUDSRES KIRKLAND HOUSE" |
+                                  house == "HUDSRES WINTHROP HOUSE" ~ "River West",
+                                  region == "Quad" ~ "Quad",
+                                  TRUE ~ "Not House"))
+write_csv(data, "~/Documents/huds/cleaned_huds.csv")
+
+quad <- cleandata %>% 
+  filter(region == c("Quad", "River")) %>% 
+  filter(time <= '10:30:00') 
+  #group_by(date) 
+
+quad_int <- cleandata %>% 
+  filter(house == "HUDSRES ANNENBERG" | house == "HUDSRES QUINCY HOUSE") %>% 
+  filter(type == "INT Cabot Interhouse" | type == "INT Currier Interhouse" |
+         type == "INT Pforzheimer Interhouse") %>% 
+  filter(time <= '10:30:00') 
+
+#quadlings who get hot breakfast
+inter_breakfast <- ggplot(quad_int, aes(x = date, fill = house)) +
+  geom_bar(position = "dodge", stat = "count") +
+  scale_x_date(date_breaks = "1 day", date_labels = "%b %d") +
+  scale_fill_manual(name = "Dining Hall", labels = c("Annenberg", "Quincy"), 
+                    values = c("#BE1E26", "#FF6B61")) +
+  theme_hodp() +
+  labs(
+    x = "Date",
+    y = "Number of People",
+    title = "Number of Quadlings\nWho Get Hot Breakfast",
+    subtitle = "2021/10/4 ~ 2021/10/9"
+  )
+inter_breakfast
+
+houseLabel <- c("Adams", "Cabot", "Currier", "Dunster", "Eliot", "Kirkland",
+                "Leverett", "Lowell", "Mather", "Pforzheimer", "Quincy", "Winthrop")
+
+#general trend for breakfast
+breakfast_count <- ggplot(quad, aes(x = house, fill = region)) +
+  geom_bar() +
+  scale_x_discrete(label = houseLabel) +
+  scale_fill_manual(values = c("#BE1E26", "#FF6B61")) +
+  theme_hodp() +
+  theme(axis.text.x = element_text(size = 8)) +
+  labs(x = "House",
+       y = "Number of People",
+       fill = "",
+       title = "Number of People Who\nEat Breakfast At Each House",
+       subtitle = "2021/10/4 ~ 2021/10/9")
+grid::grid.raster(logo, x = 0.01, y = 0.01, just = c('left', 'bottom'), width = unit(2, 'cm'))
+breakfast_count
+  
+#general trend for eating breakfast, lunch, dinner
+totalmeals <- cleandata %>% 
+  mutate(meal = case_when(time <= '10:30:00' ~ "Breakfast",
+                   time <= '14:00:00' ~ "Lunch",
+                   TRUE ~ "Dinner")) %>% 
+  filter(neighborhood != "Not House") %>% 
+  ggplot(aes(x = factor(meal, level = c("Breakfast", "Lunch", "Dinner")), fill = neighborhood)) +
+  geom_bar() +
+  scale_fill_manual(values = c("#760000", "#BE1E26", "#D84742", "#FF6B61")) +
+  theme_hodp() +
+  labs(
+    x = "Meal",
+    y = "Number of People",
+    fill = "House",
+    title = "Number of People Who Eat at HUDS",
+    subtitle = "2021/10/4 ~ 2021/10/9"
+  )
+totalmeals
+  
+#quadlings who eat at river
+interhouse <- cleandata %>% 
+  mutate(meal = case_when(time <= '10:30:00' ~ "Breakfast",
+                   time <= '14:00:00' ~ "Lunch",
+                   TRUE ~ "Dinner")) %>% 
+  filter(meal != "Breakfast") %>% 
+  filter(neighborhood != "Not House") %>% 
+  mutate(quad = case_when(type == "INT Cabot Interhouse" | 
+                        type == "INT Currier Interhouse" |
+                        type == "INT Pforzheimer Interhouse" ~ "Quad Interhouse",
+                        TRUE ~ "River")) %>% 
+  ggplot(aes(x = factor(meal, level = c("Lunch", "Dinner")), fill = quad)) +
+  geom_bar() +
+  facet_wrap(~neighborhood) +
+  scale_fill_manual(values = c("#FA9E1C", "#EE3838")) +
+  theme_hodp() +
+  labs(
+    x = "Meal",
+    y = "Number of People",
+    fill = "House",
+    title = "Number of Quadlings Who Eat in River Houses",
+    subtitle = "2021/10/4 ~ 2021/10/9"
+  ) +
+  theme(plot.title = element_text(size = 18))
+interhouse
+grid::grid.raster(logo, x = 0.01, y = 0.01, just = c('left', 'bottom'), width = unit(2, 'cm'))
+
+```
+
