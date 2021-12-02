@@ -155,6 +155,7 @@ interhouse <- cleandata %>%
                    TRUE ~ "Dinner")) %>% 
   filter(meal != "Breakfast") %>% 
   filter(neighborhood != "Not House") %>% 
+  filter(neighborhood != "Quad") %>% 
   mutate(quad = case_when(type == "INT Cabot Interhouse" | 
                         type == "INT Currier Interhouse" |
                         type == "INT Pforzheimer Interhouse" ~ "Quad Interhouse",
@@ -175,5 +176,9 @@ interhouse <- cleandata %>%
 interhouse
 grid::grid.raster(logo, x = 0.01, y = 0.01, just = c('left', 'bottom'), width = unit(2, 'cm'))
 
+perc <- quad %>% 
+  group_by(house) %>% 
+  summarize(n())
+    
 ```
 
